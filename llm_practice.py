@@ -2,18 +2,10 @@ import requests
 import json
 import os
 from dotenv import load_dotenv
+import google.generativeai as genai   # Gemini SDK
+from difflib import SequenceMatcher   # for similarity comparison
 
-def getLLM_Result(prompt, model):
-    """
-    Function to get LLM result using OpenRouter API
-    
-    Args:
-        prompt (str): The input prompt to send to the AI model
-        
-    Returns:
-        str: The response from the AI model
-    """
-    # Load environment variables from .env file
+def getLLM_Result_OpenRouter(prompt, model):
     load_dotenv()
     
     # OpenRouter API endpoint
@@ -29,13 +21,11 @@ def getLLM_Result(prompt, model):
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
-        # "HTTP-Referer": "https://your-app.com",  # Replace with your app URL
-        # "X-Title": "Your App Name"  # Replace with your app name
     }
     
     # Request payload
     payload = {
-        "model": model,  # You can change this to any model
+        "model": model,
         "messages": [
             {
                 "role": "user",
@@ -65,16 +55,40 @@ def getLLM_Result(prompt, model):
     except Exception as e:
         return f"Unexpected error: {str(e)}"
 
+
+def getLLM_Result_Gemini(prompt):
+    load_dotenv()
+    gemini_key = os.getenv("GEMINI_API_KEY")
+
+    if not gemini_key:
+        raise ValueError("Please set GEMINI_API_KEY in your .env file")
+
+    # configure Gemini client
+    genai.configure(api_key=gemini_key)
+    model = genai.GenerativeModel("gemini-1.5-flash")
+
+    try:
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"Error with Gemini request: {str(e)}"
+
+def text_similarity(a, b):
+    """Return a similarity ratio between two texts"""
+    return round(SequenceMatcher(None, a, b).ratio() * 100, 2)
+
 def main():
-    """
-    Main function that calls getLLM_Result with a prompt and saves result to markdown file
-    """
     # Example prompt - you can modify this
-    prompt = "Explain quantum computing to a 10-year-old"
+    prompt = "Give me 10  Interview quetions and answers  on Java ,microservice, GCP cloud, Spring boot with 5+ years of experince"
     
     # Call the function to get the result
-    # result = getLLM_Result(prompt, "google/gemma-3n-e2b-it:free")
-    result = getLLM_Result(prompt, "deepseek/deepseek-r1-0528:free")
+    deepseek_result = getLLM_Result_OpenRouter(prompt, "deepseek/deepseek-r1-0528:free")
+
+    # Gemini response (via Google AI Studio API)
+    gemini_result = getLLM_Result_Gemini(prompt)
+
+    # Compare similarity
+    similarity_score = text_similarity(deepseek_result, gemini_result)
     
     # Create markdown content
     markdown_content = f"""# AI Model Response
@@ -82,11 +96,19 @@ def main():
 ## Prompt
 {prompt}
 
-## Response
-{result}
+## DeepSeek Response
+{deepseek_result}
 
+## Gemini Response
+{gemini_result}
+
+
+## 🔍 Comparison
+**Similarity Score:** {similarity_score}%
+
+(A higher % means responses are more alike)
 ---
-*Generated using OpenRouter API*
+*Generated using OpenRouter + Gemini API*
 """
     
     # Save to markdown file
@@ -94,7 +116,7 @@ def main():
     try:
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write(markdown_content)
-        print(f"Response saved to {output_file}")
+        print(f"Comparison saved to {output_file}")
     except Exception as e:
         print(f"Error saving to file: {str(e)}")
 
